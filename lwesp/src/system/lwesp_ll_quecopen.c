@@ -44,6 +44,12 @@ static uint8_t initialized;
 void ql_uart_notify_cb(uint32 ind_type, ql_uart_port_number_e port, uint32 size)
 {
     unsigned char *recv_buff = calloc(1, QL_UART_RX_BUFF_SIZE+1);
+    if (!recv_buff)
+    {
+        QL_LWESP_LOG("Failed to allocate receive buffer");
+        return;
+    }
+    
     unsigned int real_size = 0;
     int read_len = 0;
     
