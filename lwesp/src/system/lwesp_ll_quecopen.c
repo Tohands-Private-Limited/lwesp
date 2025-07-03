@@ -33,27 +33,13 @@
 #define QL_UART_RX_BUFF_SIZE                2048
 #define QL_UART_TX_BUFF_SIZE                2048
 
-#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#ifndef MIN
+#define MIN(a,b) (((a) < (b)) ? (a) : (b))
+#endif
 
 static ql_task_t uart_rx_task = NULL;
 static lwesp_ll_t* s_ll_ref = NULL;
 static uint8_t initialized;
-
-// /* UART RX thread to read data and pass to lwesp_input_process */
-// static void lwesp_uart_rx_task(void *param) {
-//     uint8_t buffer[128];
-//     int len;
-
-//     while (1) {
-//         len = ql_uart_read(LWESP_UART_PORT, buffer, sizeof(buffer));
-//         QL_LWESP_LOG("Read %d bytes from UART", len);
-//         if (len > 0 && s_ll_ref) {
-//             QL_LWESP_LOG("Processing %s bytes of data", (char*)buffer);
-//             lwesp_input_process(buffer, (size_t)len);
-//         }
-//         ql_rtos_task_sleep_ms(10);
-//     }
-// }
 
 void ql_uart_notify_cb(uint32 ind_type, ql_uart_port_number_e port, uint32 size)
 {
@@ -73,7 +59,7 @@ void ql_uart_notify_cb(uint32 ind_type, ql_uart_port_number_e port, uint32 size)
                 real_size= MIN(size, QL_UART_RX_BUFF_SIZE);
                 
                 read_len = ql_uart_read(port, recv_buff, real_size);
-                QL_LWESP_LOG("read_len=%d recv_buff: %s", read_len, recv_buff);
+                QL_LWESP_LOG("read_len=%d recv_buff: %.*s", read_len, read_len, recv_buff);
                 if((read_len > 0) && (size >= read_len))
                 {
                     size -= read_len;
@@ -98,7 +84,7 @@ void ql_uart_notify_cb(uint32 ind_type, ql_uart_port_number_e port, uint32 size)
 
 /* Send function called by LwESP core */
 static size_t prv_send_data(const void* data, size_t len) {
-    QL_LWESP_LOG("Sending data: %s, len: %d ", data, len);  
+    QL_LWESP_LOG("Sending data: %.*s, len: %d", (int)len, (const char*)data, len);
     return ql_uart_write(LWESP_UART_PORT, (uint8_t*)data, len);
 }
 
@@ -115,72 +101,49 @@ static size_t prv_send_data(const void* data, size_t len) {
  * \return          \ref lwespOK on success, member of \ref lwespr_t enumeration otherwise
  */
 lwespr_t lwesp_ll_init(lwesp_ll_t* ll) {
-    QL_LWESP_LOG("1");
     static uint8_t memory[LWESP_MEM_SIZE];
-    QL_LWESP_LOG("2");
     const lwesp_mem_region_t mem_regions[] = {{memory, sizeof(memory)}};
 
-    QL_LWESP_LOG("3");
     if (!initialized) {
         lwesp_mem_assignmemory(mem_regions, LWESP_ARRAYSIZE(mem_regions)); /* Assign memory for allocations */
     }
-    QL_LWESP_LOG("4");
 
     if (!initialized)
     {
-    int ret = 0;
-    ql_uart_config_s uart_cfg = {0};
-    s_ll_ref = ll;
-    ll->send_fn = prv_send_data;
+        int ret = 0;
+        ql_uart_config_s uart_cfg = {0};
+        s_ll_ref = ll;
+        ll->send_fn = prv_send_data;
 
-    uart_cfg.baudrate = QL_UART_BAUD_115200;
-    uart_cfg.flow_ctrl = QL_FC_NONE;
-    uart_cfg.data_bit = QL_UART_DATABIT_8;
-    uart_cfg.stop_bit = QL_UART_STOP_1;
-    uart_cfg.parity_bit = QL_UART_PARITY_NONE;
+        uart_cfg.baudrate = QL_UART_BAUD_115200;
+        uart_cfg.flow_ctrl = QL_FC_NONE;
+        uart_cfg.data_bit = QL_UART_DATABIT_8;
+        uart_cfg.stop_bit = QL_UART_STOP_1;
+        uart_cfg.parity_bit = QL_UART_PARITY_NONE;
 
-    QL_LWESP_LOG("5");
-    ret = ql_uart_set_dcbconfig(LWESP_UART_PORT, &uart_cfg);
-    if (ret != QL_UART_SUCCESS) {
-        QL_LWESP_LOG("Failed to set UART config: 0x%x", ret);
-        return lwespERR;
-    }
-    QL_LWESP_LOG("6");
-    // Configure UART pins
-    // ret = ql_pin_set_func(QL_UART2_TX_PIN, QL_UART2_TX_FUNC);
-    // if (ret != QL_GPIO_SUCCESS) {
-    //     QL_LWESP_LOG("Failed to set TX pin func");
-    //     return lwespERR;
-    // }
-    // ret = ql_pin_set_func(QL_UART2_RX_PIN, QL_UART2_RX_FUNC);
-    // if (ret != QL_GPIO_SUCCESS) {
-    //     QL_LWESP_LOG("Failed to set RX pin func");
-    //     return lwespERR;
-    // }
+        ret = ql_uart_set_dcbconfig(LWESP_UART_PORT, &uart_cfg);
+        if (ret != QL_UART_SUCCESS) {
+            QL_LWESP_LOG("Failed to set UART config: 0x%x", ret);
+            return lwespERR;
+        }
+        
+        ret = ql_uart_open(LWESP_UART_PORT);
+        if (ret != QL_UART_SUCCESS) {
+            QL_LWESP_LOG("Failed to open UART port: 0x%x", ret);
+            return lwespERR;
+        }
 
-    QL_LWESP_LOG("7");
-    ret = ql_uart_open(LWESP_UART_PORT);
-    if (ret != QL_UART_SUCCESS) {
-        QL_LWESP_LOG("Failed to open UART port: 0x%x", ret);
-        return lwespERR;
-    }
-    QL_LWESP_LOG("8");
+        ret = ql_uart_register_cb(LWESP_UART_PORT, ql_uart_notify_cb);
+        QL_LWESP_LOG("ret: 0x%x", ret);
+        if (ret != QL_UART_SUCCESS) {
+            QL_LWESP_LOG("Failed to register UART callback: 0x%x", ret);
+            ql_uart_close(LWESP_UART_PORT);
+            return lwespERR;
+        }
 
-    ret = ql_uart_register_cb(LWESP_UART_PORT, ql_uart_notify_cb);
-	QL_LWESP_LOG("ret: 0x%x", ret);
-    if (ret != QL_UART_SUCCESS) {
-        QL_LWESP_LOG("Failed to register UART callback: 0x%x", ret);
-        ql_uart_close(LWESP_UART_PORT);
-        return lwespERR;
-    }
-
-    // ql_rtos_task_create(uart_rx_task, LWESP_SYS_THREAD_SS, LWESP_SYS_THREAD_PRIO, "lwesp_uart_rx", lwesp_uart_rx_task, NULL, 5);
-   
-    QL_LWESP_LOG("9");
-    QL_LWESP_LOG("LwESP low-level initialized with UART port %d at baudrate %d\n", LWESP_UART_PORT, LWESP_UART_BAUDRATE);
-    initialized = 1; /* Mark as initialized */
-    ll->uart.baudrate = LWESP_UART_BAUDRATE; /* Store the baudrate in the ll structure */
-    QL_LWESP_LOG("10");
+        QL_LWESP_LOG("LwESP low-level initialized with UART port %d at baudrate %d\n", LWESP_UART_PORT, LWESP_UART_BAUDRATE);
+        initialized = 1; /* Mark as initialized */
+        ll->uart.baudrate = LWESP_UART_BAUDRATE; /* Store the baudrate in the ll structure */
     }
     return lwespOK;
 }

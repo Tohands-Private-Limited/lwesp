@@ -129,7 +129,7 @@ uint8_t lwesp_sys_mutex_unlock(lwesp_sys_mutex_t* p) {
     {
         return 1; // Success
     }
-    return 1;
+    return 0; // Failure
 }
 
 /**
@@ -282,10 +282,11 @@ uint32_t lwesp_sys_mbox_put(lwesp_sys_mbox_t* b, void* m) {
  *                      or \ref LWESP_SYS_TIMEOUT if it was not successful
  */
 uint32_t lwesp_sys_mbox_get(lwesp_sys_mbox_t* b, void** m, uint32_t timeout) {
-    void* msg_ptr = NULL;
+    quec_mbox_t msg;
     uint32_t start = ql_rtos_up_time_ms();
-    if (ql_rtos_queue_wait(*b, (uint8*)&msg_ptr, sizeof(void*), timeout ? timeout : QL_WAIT_FOREVER) == QL_OSI_SUCCESS) {
-        *m = msg_ptr;
+    if (ql_rtos_queue_wait(*b, (uint8_t*)&msg, sizeof(quec_mbox_t), timeout ? timeout : QL_WAIT_FOREVER) == QL_OSI_SUCCESS)
+    {
+        *m = msg.d;
         return ql_rtos_up_time_ms() - start;
     }
     return LWESP_SYS_TIMEOUT;
@@ -299,7 +300,8 @@ uint32_t lwesp_sys_mbox_get(lwesp_sys_mbox_t* b, void** m, uint32_t timeout) {
  */
 uint8_t lwesp_sys_mbox_putnow(lwesp_sys_mbox_t* b, void* m)
 {
-    return ql_rtos_queue_release(*b, sizeof(void*), (uint8*)&m, 0) == QL_OSI_SUCCESS;
+    quec_mbox_t msg = {.d = m};
+    return ql_rtos_queue_release(*b, sizeof(quec_mbox_t), (uint8_t*)&msg, 0) == QL_OSI_SUCCESS;
 }
 
 /**
@@ -309,9 +311,9 @@ uint8_t lwesp_sys_mbox_putnow(lwesp_sys_mbox_t* b, void* m)
  * \return          `1` on success, `0` otherwise
  */
 uint8_t lwesp_sys_mbox_getnow(lwesp_sys_mbox_t* b, void** m) {
-    void* msg_ptr = NULL;
-    if (ql_rtos_queue_wait(*b, (uint8*)&msg_ptr, sizeof(void*), 0) == QL_OSI_SUCCESS) {
-        *m = msg_ptr;
+    quec_mbox_t msg;
+    if (ql_rtos_queue_wait(*b, (uint8_t*)&msg, sizeof(quec_mbox_t), 0) == QL_OSI_SUCCESS) {
+        *m = msg.d;
         return 1;
     }
     return 0;
